@@ -1,0 +1,55 @@
+import os
+import subprocess
+import textwrap
+from openai import OpenAI
+
+# 建议在申请表中提到你使用了 GPT-4 或更高阶模型以支撑多代理逻辑
+client = OpenAI(api_key="YOUR_API_KEY")
+
+class AutoFixAgent:
+    def __init__(self, target_file):
+        self.target_file = target_file
+
+    def run_tests(self):
+        """感知层：运行测试并捕获报错"""
+        print(f"[*] 正在验证 {self.target_file}...")
+        result = subprocess.run(["python3", self.target_file], capture_output=True, text=True)
+        return result.returncode == 0, result.stderr
+
+    def get_ai_fix(self, error_log):
+        """修复层：AI 思考并给出方案"""
+        print("[*] Fixer Agent 正在分析逻辑缺陷...")
+        with open(self.target_file, "r") as f:
+            code = f.read()
+        
+        prompt = f"以下代码运行报错，请修复它并只输出修复后的完整代码：\n\n代码：\n{code}\n\n错误：\n{error_log}"
+        
+        # 此处展示了多步调用的逻辑，可在申请中强调
+        response = client.chat.completions.create(
+            model="gpt-4-turbo-preview",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content.strip()
+
+    def run_loop(self, max_retry=3):
+        """闭环控制逻辑"""
+        for i in range(max_retry):
+            success, error = self.run_tests()
+            if success:
+                print("✅ [成果] 代码已自愈，所有测试通过！")
+                return True
+            
+            print(f"❌ 发现 Bug，启动第 {i+1} 次自动修复...")
+            new_code = self.get_ai_fix(error)
+            
+            with open(self.target_file, "w") as f:
+                f.write(new_code)
+        return False
+
+if __name__ == "__main__":
+    # 模拟一个有逻辑 Bug 的代码文件
+    with open("task.py", "w") as f:
+        f.write("def add(a, b): return a - b # 逻辑错误\nassert add(10, 5) == 15")
+    
+    agent = AutoFixAgent("task.py")
+    agent.run_loop()
